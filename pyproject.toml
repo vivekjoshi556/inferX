@@ -1,0 +1,35 @@
+[project]
+name = "inferX"
+version = "0.0.1"
+requires-python = ">=3.10"
+
+dependencies = []
+
+[project.optional-dependencies]
+# pip install .[dev]
+dev = [
+    "pytest-cov==7.1.0",
+    "pybind11",
+    "pre-commit"
+]
+
+
+[tool.pytest.ini_options]
+pythonpath=["inferX"]
+
+
+[build-system]
+requires = [
+    # bootstraps the build env & passes req context downward to the CMake execution layer
+    # Injects the env path using a command line wrapper
+    # cmake -DCMAKE_PREFIX_PATH="/path/to/venv/" 
+    "scikit-build-core",
+
+    "pybind11"
+]
+build-backend = "scikit_build_core.build"
+
+
+[tool.scikit-build]
+wheel.packages = ["inferX"]
+cmake.targets = ["_inferX"]
