@@ -221,6 +221,10 @@ void inferX::Requests::request_multiple_files(std::vector<std::string>& urls,
 
 inferX::Requests::~Requests() {
     curl_global_cleanup();
+    if (this->multi_handle) {
+        curl_multi_cleanup(this->multi_handle);
+        this->multi_handle = nullptr;
+    }
     if (this->handle) {
         curl_easy_cleanup(this->handle);
         this->handle = nullptr;
