@@ -5,6 +5,26 @@
 
 using json = nlohmann::json;
 
+fs::path inferX::get_download_dir(std::string& model_id) {
+    fs::path output_dir;
+
+    const char* env_dir_path = std::getenv("INFERX_CACHE");
+    if (env_dir_path != nullptr) {
+        output_dir = fs::path(env_dir_path) / model_id;
+    } else {
+        const char* home_dir_path = std::getenv("HOME");
+        output_dir =
+            fs::current_path() / ".cache" / "inferX" / "hub" / model_id;
+        if (home_dir_path != nullptr) {
+            const char* home_env = std::getenv("HOME");
+            output_dir =
+                fs::path(home_env) / ".cache" / "inferX" / "hub" / model_id;
+        }
+    }
+
+    return output_dir;
+}
+
 void inferX::load_model(std::string model_id, std::string revision,
                         std::string auth_token) {
     Requests download = Requests();
@@ -36,24 +56,7 @@ void inferX::load_model(std::string model_id, std::string revision,
                         "/resolve/main/" + filename);
     }
 
-    // Setting up download folder
-    const char* env_dir_path = std::getenv("INFERX_CACHE");
-
-    fs::path output_dir;
-
-    if (env_dir_path != nullptr) {
-        output_dir = env_dir_path;
-    } else {
-        const char* home_dir_path = std::getenv("HOME");
-        output_dir =
-            fs::current_path() / ".cache" / "inferX" / "hub" / model_id;
-        if (home_dir_path != nullptr) {
-            const char* home_env = std::getenv("HOME");
-            output_dir =
-                fs::path(home_env) / ".cache" / "inferX" / "hub" / model_id;
-        }
-    }
-
+    fs::path output_dir = get_download_dir(model_id);
     std::cout << "Model Download dir:" << output_dir << std::endl;
     if (!fs::exists(output_dir) || !fs::is_directory(output_dir)) {
         fs::create_directories(output_dir);
