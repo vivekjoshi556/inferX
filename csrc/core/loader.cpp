@@ -25,8 +25,10 @@ fs::path inferX::get_download_dir(std::string& model_id) {
     return output_dir;
 }
 
-void inferX::load_model(std::string model_id, std::string revision,
-                        std::string auth_token) {
+std::vector<std::string> inferX::hf_model_ls(std::string& model_id,
+                                             std::string& auth_token) {
+    std::string filename;
+    std::vector<std::string> files;
     Requests download = Requests();
 
     const std::string HF_BASE_API_URL = "https://huggingface.co/api/models";
@@ -35,17 +37,15 @@ void inferX::load_model(std::string model_id, std::string revision,
         download.request_api(HF_BASE_API_URL + "/" + model_id, auth_token);
     if (response.is_discarded()) {
         std::cerr << "[ERROR]: Failed to get Model Details";
-        return;
+        return files;
     }
 
     if (!response.contains("siblings") || !response["siblings"].is_array()) {
         std::cerr << "[ERROR]: Could not retrieve list of files for model_id: "
                   << model_id << std::endl;
-        return;
+        return files;
     }
 
-    std::string filename;
-    std::vector<std::string> files;
     for (auto& it : response["siblings"]) {
         if (it.is_object() && it.contains("rfilename")) {
             filename = it["rfilename"].get<std::string>();
@@ -55,6 +55,13 @@ void inferX::load_model(std::string model_id, std::string revision,
         files.push_back("https://huggingface.co/" + model_id +
                         "/resolve/main/" + filename);
     }
+    return files;
+}
+
+void inferX::load_model(std::string model_id, std::string revision,
+                        std::string auth_token) {
+    Requests download = Requests();
+    std::vector<std::string> files = hf_model_ls(model_id, auth_token);
 
     fs::path output_dir = get_download_dir(model_id);
     std::cout << "Model Download dir:" << output_dir << std::endl;
