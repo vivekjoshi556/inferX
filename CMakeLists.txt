@@ -44,6 +44,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         -fsanitize=address
         -fno-omit-frame-pointer
         -g
+        -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wunreachable-code -Wunused
     )
 
     target_link_options(${PROJECT_NAME}
