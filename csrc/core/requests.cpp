@@ -26,26 +26,9 @@ size_t inferX::Requests::_file_write_callback(char* ptr, size_t size,
                                               size_t nmemb, void* userdata) {
     auto* file = static_cast<std::ofstream*>(userdata);
 
-    file->write(ptr, size * nmemb);
+    file->write(ptr, static_cast<std::streamsize>(size * nmemb));
 
     return size * nmemb;
-}
-
-std::string inferX::Requests::_get_filename(std::string& url) {
-    size_t last_slash_idx = url.rfind('/');
-    std::string filename;
-
-    if (last_slash_idx != std::string::npos) {
-        // Extract the substring starting right after the slash
-        filename = url.substr(last_slash_idx + 1);
-    } else {
-        std::cout
-            << "No slash found. The URL might just be the filename or invalid."
-            << std::endl;
-        // Generate a random name here.
-    }
-
-    return filename;
 }
 
 void inferX::Requests::_init_curl() {
@@ -66,7 +49,8 @@ void inferX::Requests::_init_multi_curl() {
     }
 }
 
-json inferX::Requests::request_api(std::string url, std::string auth_token) {
+json inferX::Requests::request_api(const std::string& url,
+                                   const std::string& auth_token) {
     json result;
 
     if (!this->handle) {
@@ -107,35 +91,26 @@ json inferX::Requests::request_api(std::string url, std::string auth_token) {
     return result;
 }
 
-void inferX::Requests::request_file(std::string url, std::string op_file) {
-    // CURLcode result;
-
-    // curl_easy_setopt(this->handle, CURLOPT_URL, url.c_str());
-    // result = curl_easy_perform(this->handle);
-}
-
-void inferX::Requests::_attach_multi_handle_req(std::string url, unsigned int i,
-                                                int& left,
-                                                fs::path& op_filepath) {
+bool inferX::Requests::_attach_multi_handle_req(const inferX::ModelFile& file,
+                                                const fs::path& output_dir) {
     CURL* local_curl = curl_easy_init();
     if (!local_curl) {
-        std::cerr << "[ERROR]: Failed to initialize cURL for filename: " << url
-                  << std::endl;
-        return;
+        std::cerr << "[ERROR]: Failed to initialize cURL for filename: "
+                  << file.filename << std::endl;
+        return false;
     }
 
-    left += 1;
-
+    std::string op_filepath = output_dir / file.filename;
     auto* ctx = new DownloadContext();
-    ctx->url = url;
+    ctx->url = file.download_url;
 
     ctx->file.open(op_filepath, std::ios::binary);
-    if (!ctx->file.is_open()) {  // ← also guard this
+    if (!ctx->file.is_open()) {
         std::cerr << "[ERROR]: Failed to open file: " << op_filepath
                   << std::endl;
         curl_easy_cleanup(local_curl);
         delete ctx;
-        return;
+        return false;
     }
 
     curl_easy_setopt(local_curl, CURLOPT_URL, ctx->url.c_str());
@@ -153,16 +128,21 @@ void inferX::Requests::_attach_multi_handle_req(std::string url, unsigned int i,
     curl_easy_setopt(local_curl, CURLOPT_NOPROGRESS, 0L);
 
     curl_multi_add_handle(this->multi_handle, local_curl);
+    return true;
 }
 
-void inferX::Requests::request_multiple_files(std::vector<std::string>& urls,
-                                              fs::path& output_dir) {
+void inferX::Requests::request_multiple_files(
+    const std::vector<inferX::ModelFile>& files, const fs::path& output_dir) {
     json result;
 
     if (!this->multi_handle) {
         this->_init_multi_curl();
 
-        if (!this->multi_handle) return;
+        if (!this->multi_handle) {
+            std::cerr << "[ERROR]: File Download failed. Could not initialize "
+                         "multi-handler.";
+            return;
+        }
     }
 
     CURLMsg* msg;
@@ -176,11 +156,12 @@ void inferX::Requests::request_multiple_files(std::vector<std::string>& urls,
 
     // Adding transfers to multi-curl.
     for (transfers = 0;
-         transfers < std::min((long)MAX_PARALLEL, (long)(urls.size()));
+         transfers < std::min((long)MAX_PARALLEL, (long)(files.size()));
          transfers++) {
-        op_filepath = output_dir / this->_get_filename(urls[transfers]);
-        this->_attach_multi_handle_req(urls[transfers], transfers, left,
-                                       op_filepath);
+        op_filepath = output_dir / files[transfers].filename;
+        if (this->_attach_multi_handle_req(files[transfers], output_dir)) {
+            left += 1;
+        }
     }
 
     do {
@@ -202,11 +183,12 @@ void inferX::Requests::request_multiple_files(std::vector<std::string>& urls,
                 curl_easy_cleanup(curl);
                 left--;
 
-                if (transfers < urls.size()) {
-                    op_filepath =
-                        output_dir / this->_get_filename(urls[transfers]);
-                    this->_attach_multi_handle_req(urls[transfers], transfers,
-                                                   left, op_filepath);
+                if (transfers < files.size()) {
+                    op_filepath = output_dir / files[transfers].filename;
+                    if (this->_attach_multi_handle_req(files[transfers],
+                                                       output_dir)) {
+                        left += 1;
+                    }
                     transfers += 1;
                 }
             }

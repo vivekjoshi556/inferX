@@ -5,7 +5,7 @@
 
 using json = nlohmann::json;
 
-fs::path inferX::get_download_dir(std::string& model_id) {
+fs::path inferX::get_download_dir(const std::string& model_id) {
     fs::path output_dir;
 
     const char* env_dir_path = std::getenv("INFERX_CACHE");
@@ -16,19 +16,18 @@ fs::path inferX::get_download_dir(std::string& model_id) {
         output_dir =
             fs::current_path() / ".cache" / "inferX" / "hub" / model_id;
         if (home_dir_path != nullptr) {
-            const char* home_env = std::getenv("HOME");
-            output_dir =
-                fs::path(home_env) / ".cache" / "inferX" / "hub" / model_id;
+            output_dir = fs::path(home_dir_path) / ".cache" / "inferX" / "hub" /
+                         model_id;
         }
     }
 
     return output_dir;
 }
 
-std::vector<std::string> inferX::hf_model_ls(std::string& model_id,
-                                             std::string& auth_token) {
+std::vector<inferX::ModelFile> inferX::hf_model_ls(
+    const std::string& model_id, const std::string& auth_token) {
     std::string filename;
-    std::vector<std::string> files;
+    std::vector<inferX::ModelFile> files;
     Requests download = Requests();
 
     const std::string HF_BASE_API_URL = "https://huggingface.co/api/models";
@@ -52,16 +51,18 @@ std::vector<std::string> inferX::hf_model_ls(std::string& model_id,
         } else if (it.is_string()) {
             filename = it.get<std::string>();
         }
-        files.push_back("https://huggingface.co/" + model_id +
-                        "/resolve/main/" + filename);
+
+        files.emplace_back(filename, "https://huggingface.co/" + model_id +
+                                         "/resolve/main/" + filename);
     }
     return files;
 }
 
-void inferX::load_model(std::string model_id, std::string revision,
-                        std::string auth_token) {
+void inferX::load_model(const std::string& model_id,
+                        const std::string& revision,
+                        const std::string& auth_token) {
     Requests download = Requests();
-    std::vector<std::string> files = hf_model_ls(model_id, auth_token);
+    std::vector<inferX::ModelFile> files = hf_model_ls(model_id, auth_token);
 
     fs::path output_dir = get_download_dir(model_id);
     std::cout << "Model Download dir:" << output_dir << std::endl;
