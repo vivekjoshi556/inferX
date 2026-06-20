@@ -4,14 +4,16 @@
 #include <vector>
 #include <iostream>
 #include <filesystem>
+#include "inferX/types.h"
 
 namespace fs = std::filesystem;
 
 namespace inferX {
-std::vector<std::string> hf_model_ls(std::string&, std::string&);
-fs::path get_download_dir(std::string& model_id);
-void load_model(std::string model_id, std::string revision = "main",
-                std::string auth_token = "");
+std::vector<inferX::ModelFile> hf_model_ls(const std::string&,
+                                           const std::string&);
+fs::path get_download_dir(const std::string&);
+void load_model(const std::string&, const std::string& revision = "main",
+                const std::string& auth_token = "");
 }  // namespace inferX
 
 #endif
