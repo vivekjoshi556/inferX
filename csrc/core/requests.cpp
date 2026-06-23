@@ -2,7 +2,9 @@
 #include "requests.h"
 #include <nlohmann/json.hpp>
 
-inferX::Requests::Requests() {
+namespace inferX {
+
+Requests::Requests() {
     CURLcode result = curl_global_init(CURL_GLOBAL_ALL);
 
     if (result != CURLE_OK) {
@@ -14,16 +16,16 @@ inferX::Requests::Requests() {
     this->_init_multi_curl();
 }
 
-size_t inferX::Requests::_write_callback(char* ptr, size_t size, size_t nmemb,
-                                         void* userdata) {
+size_t Requests::_write_callback(char* ptr, size_t size, size_t nmemb,
+                                 void* userdata) {
     auto* data = static_cast<std::string*>(userdata);
 
     data->append(static_cast<char*>(ptr), size * nmemb);
     return size * nmemb;
 }
 
-size_t inferX::Requests::_file_write_callback(char* ptr, size_t size,
-                                              size_t nmemb, void* userdata) {
+size_t Requests::_file_write_callback(char* ptr, size_t size, size_t nmemb,
+                                      void* userdata) {
     auto* file = static_cast<std::ofstream*>(userdata);
 
     file->write(ptr, static_cast<std::streamsize>(size * nmemb));
@@ -31,7 +33,7 @@ size_t inferX::Requests::_file_write_callback(char* ptr, size_t size,
     return size * nmemb;
 }
 
-void inferX::Requests::_init_curl() {
+void Requests::_init_curl() {
     if (this->handle) return;
 
     this->handle = curl_easy_init();
@@ -40,7 +42,7 @@ void inferX::Requests::_init_curl() {
     }
 }
 
-void inferX::Requests::_init_multi_curl() {
+void Requests::_init_multi_curl() {
     if (this->multi_handle) return;
 
     this->multi_handle = curl_multi_init();
@@ -49,8 +51,8 @@ void inferX::Requests::_init_multi_curl() {
     }
 }
 
-json inferX::Requests::request_api(const std::string& url,
-                                   const std::string& auth_token) {
+json Requests::request_api(const std::string& url,
+                           const std::string& auth_token) {
     json result;
 
     if (!this->handle) {
@@ -64,9 +66,10 @@ json inferX::Requests::request_api(const std::string& url,
 
     struct curl_slist* headers = nullptr;
 
-    if (auth_token.size() > 0)
-        headers = curl_slist_append(
-            headers, ("Authorization: Bearer " + auth_token).c_str());
+    if (auth_token.size() > 0) {
+        std::string auth_header_str = ("Authorization: Bearer " + auth_token);
+        headers = curl_slist_append(headers, auth_header_str.c_str());
+    }
 
     curl_easy_setopt(this->handle, CURLOPT_URL, url.c_str());
     curl_easy_setopt(this->handle, CURLOPT_HTTPHEADER, headers);
@@ -77,11 +80,13 @@ json inferX::Requests::request_api(const std::string& url,
     response = curl_easy_perform(this->handle);
 
     if (response != CURLE_OK) {
-        std::cerr << "Request Failed: " << curl_easy_strerror(response)
+        std::cerr << "Request to: " << url
+                  << " failed. Reason: " << curl_easy_strerror(response)
                   << std::endl;
         return result;
     }
 
+    if (headers) curl_slist_free_all(headers);
     result = json::parse(readBuffer, nullptr, false);
     if (result.is_discarded()) {
         std::cerr << "[ERROR]: Failed to parse API Response" << std::endl;
@@ -92,7 +97,8 @@ json inferX::Requests::request_api(const std::string& url,
 }
 
 bool inferX::Requests::_attach_multi_handle_req(const inferX::ModelFile& file,
-                                                const fs::path& output_dir) {
+                                                const fs::path& output_dir,
+                                                const std::string& auth_token) {
     // First check if the file already exists
     std::string op_filepath = output_dir / file.filename;
     if (fs::exists(op_filepath) && fs::is_regular_file(op_filepath)) {
@@ -118,10 +124,19 @@ bool inferX::Requests::_attach_multi_handle_req(const inferX::ModelFile& file,
         return false;
     }
 
+    struct curl_slist* headers = nullptr;
+    if (!auth_token.empty()) {
+        std::string auth_header_str = ("Authorization: Bearer " + auth_token);
+        headers = curl_slist_append(headers, auth_header_str.c_str());
+    }
+
+    ctx->headers = headers;
+
     curl_easy_setopt(local_curl, CURLOPT_URL, ctx->url.c_str());
     curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &ctx->file);
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION,
                      this->_file_write_callback);
+    curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
     curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, 0);
     curl_easy_setopt(local_curl, CURLOPT_PRIVATE, ctx);
@@ -129,15 +144,15 @@ bool inferX::Requests::_attach_multi_handle_req(const inferX::ModelFile& file,
     curl_easy_setopt(local_curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(local_curl, CURLOPT_MAXREDIRS, 10L);
 
-    // curl_easy_setopt(local_curl, CURLoption option, parameter);
     curl_easy_setopt(local_curl, CURLOPT_NOPROGRESS, 0L);
 
     curl_multi_add_handle(this->multi_handle, local_curl);
     return true;
 }
 
-void inferX::Requests::request_multiple_files(
-    const std::vector<inferX::ModelFile>& files, const fs::path& output_dir) {
+void Requests::request_multiple_files(const std::vector<ModelFile>& files,
+                                      const fs::path& output_dir,
+                                      const std::string& auth_token) {
     json result;
 
     if (!this->multi_handle) {
@@ -166,7 +181,8 @@ void inferX::Requests::request_multiple_files(
     for (transfers = 0; transfers < files.size() && left < transfers_it_limit;
          transfers++) {
         op_filepath = output_dir / files[transfers].filename;
-        if (this->_attach_multi_handle_req(files[transfers], output_dir)) {
+        if (this->_attach_multi_handle_req(files[transfers], output_dir,
+                                           auth_token)) {
             left += 1;
         }
     }
@@ -184,6 +200,9 @@ void inferX::Requests::request_multiple_files(
                 curl_easy_getinfo(curl, CURLINFO_PRIVATE, &ctx);
                 if (ctx) {
                     ctx->file.close();
+                    if (ctx->headers) {
+                        curl_slist_free_all(ctx->headers);
+                    }
                     delete ctx;
                 }
                 curl_multi_remove_handle(this->multi_handle, curl);
@@ -192,8 +211,8 @@ void inferX::Requests::request_multiple_files(
 
                 if (transfers < files.size()) {
                     op_filepath = output_dir / files[transfers].filename;
-                    if (this->_attach_multi_handle_req(files[transfers],
-                                                       output_dir)) {
+                    if (this->_attach_multi_handle_req(
+                            files[transfers], output_dir, auth_token)) {
                         left += 1;
                     }
                     transfers += 1;
@@ -207,7 +226,7 @@ void inferX::Requests::request_multiple_files(
     this->multi_handle = nullptr;
 }
 
-inferX::Requests::~Requests() {
+Requests::~Requests() {
     curl_global_cleanup();
     if (this->multi_handle) {
         curl_multi_cleanup(this->multi_handle);
@@ -218,3 +237,5 @@ inferX::Requests::~Requests() {
         this->handle = nullptr;
     }
 }
+
+}  // namespace inferX

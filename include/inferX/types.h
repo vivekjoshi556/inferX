@@ -5,6 +5,14 @@
 
 namespace inferX {
 
+enum class DeviceType { CPU, CUDA };
+enum class DType { FP16, FP32, FP64, BF16 };
+
+struct Device {
+    DeviceType type;
+    int index = 0;
+};
+
 struct ModelFile {
     std::string filename;
     std::string download_url;
