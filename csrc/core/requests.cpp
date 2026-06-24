@@ -93,6 +93,12 @@ json inferX::Requests::request_api(const std::string& url,
 
 bool inferX::Requests::_attach_multi_handle_req(const inferX::ModelFile& file,
                                                 const fs::path& output_dir) {
+    // First check if the file already exists
+    std::string op_filepath = output_dir / file.filename;
+    if (fs::exists(op_filepath) && fs::is_regular_file(op_filepath)) {
+        return false;
+    }
+
     CURL* local_curl = curl_easy_init();
     if (!local_curl) {
         std::cerr << "[ERROR]: Failed to initialize cURL for filename: "
@@ -100,7 +106,6 @@ bool inferX::Requests::_attach_multi_handle_req(const inferX::ModelFile& file,
         return false;
     }
 
-    std::string op_filepath = output_dir / file.filename;
     auto* ctx = new DownloadContext();
     ctx->url = file.download_url;
 
@@ -154,9 +159,11 @@ void inferX::Requests::request_multiple_files(
     curl_multi_setopt(this->multi_handle, CURLMOPT_MAXCONNECTS,
                       (long)MAX_PARALLEL);
 
+    long transfers_it_limit =
+        std::min((long)MAX_PARALLEL, (long)(files.size()));
+
     // Adding transfers to multi-curl.
-    for (transfers = 0;
-         transfers < std::min((long)MAX_PARALLEL, (long)(files.size()));
+    for (transfers = 0; transfers < files.size() && left < transfers_it_limit;
          transfers++) {
         op_filepath = output_dir / files[transfers].filename;
         if (this->_attach_multi_handle_req(files[transfers], output_dir)) {
@@ -164,7 +171,7 @@ void inferX::Requests::request_multiple_files(
         }
     }
 
-    do {
+    while (left) {
         int still_alive = 1;
         curl_multi_perform(this->multi_handle, &still_alive);
 
@@ -194,8 +201,7 @@ void inferX::Requests::request_multiple_files(
             }
         }
         if (left) curl_multi_wait(this->multi_handle, NULL, 0, 1000, NULL);
-
-    } while (left);
+    }
 
     curl_multi_cleanup(this->multi_handle);
     this->multi_handle = nullptr;
