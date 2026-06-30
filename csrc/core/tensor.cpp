@@ -66,7 +66,7 @@ SafeTensorFile::SafeTensorFile(const fs::path& filepath) {
                 continue;
             }
 
-            this->tensor_list[el.key()] = SafeTensorEntry(
+            this->tensor_list_[el.key()] = SafeTensorEntry(
                 {.name = el.key(),
                  .dtype = _get_dtype(el.value()["dtype"].get<std::string>()),
                  .filepath = filepath,
@@ -79,23 +79,40 @@ SafeTensorFile::SafeTensorFile(const fs::path& filepath) {
     handle.close();
 }
 
-const SafeTensorEntry& SafeTensorFile::get_entry(
-    const std::string& name) const {
-    return this->tensor_list.at(name);
-}
-
 std::unordered_map<std::string, Tensor> SafeTensorFile::load_tensors(
     const Device& device) {
     std::unordered_map<std::string, Tensor> tensors;
 
-    for (auto& el : this->tensor_list) {
+    for (auto& el : this->tensor_list_) {
         tensors.try_emplace(el.first, el.second, device);
     }
 
     return tensors;
 }
 
-Tensor::Tensor(const SafeTensorEntry& tensor_entry, const Device& device_) {
+std::shared_ptr<void> Tensor::_get_memory(const uint64_t& required_bytes,
+                                          const Device& device) {
+    uint64_t available_memory = get_memory_available(device);
+    if (available_memory < required_bytes) {
+        throw std::runtime_error(
+            "[ERROR]: Device out of memory. Tried to allocate " +
+            human_readable_memory(required_bytes) +
+            ", available: " + human_readable_memory(available_memory));
+    }
+
+    std::string shape = "";
+    for (uint64_t& s : this->shape_) {
+        shape += std::to_string(s) + " ";
+    }
+
+    std::cout << "Tensor " << this->name_ << " with shape: " << shape
+              << "memory requirement: " << human_readable_memory(required_bytes)
+              << std::endl;
+
+    return std::shared_ptr<void>(malloc(required_bytes), free);
+}
+
+Tensor::Tensor(const SafeTensorEntry& tensor_entry, const Device& device) {
     std::ifstream r_handle(tensor_entry.filepath, std::ios::binary);
 
     if (!r_handle) {
@@ -103,55 +120,37 @@ Tensor::Tensor(const SafeTensorEntry& tensor_entry, const Device& device_) {
                                  tensor_entry.filepath.string());
     }
 
-    this->name = tensor_entry.name;
-    this->dtype = tensor_entry.dtype;
-    this->shape = tensor_entry.shape;
-    this->device = device_;
+    this->name_ = tensor_entry.name;
+    this->dtype_ = tensor_entry.dtype;
+    this->shape_ = tensor_entry.shape;
+    this->device_ = device;
 
-    uint64_t available_memory = get_memory_available(device_);
     uint64_t required_bytes =
         tensor_entry.offset_end - tensor_entry.offset_start;
 
-    if (available_memory < required_bytes) {
-        throw std::runtime_error(
-            "[ERROR]: Device out of memory. Tried to allocate " +
-            human_readable_memory(required_bytes) +
-            ", available: " + human_readable_memory(available_memory));
-    } else {
-        std::string shape = "";
-        for (uint64_t& s : this->shape) {
-            shape += std::to_string(s) + " ";
-        }
-
-        std::cout << "Tensor " << this->name << " with shape: " << shape
-                  << "memory requirement: "
-                  << human_readable_memory(required_bytes) << std::endl;
-    }
-
-    // this->data = malloc(required_bytes);
+    this->data_ = this->_get_memory(required_bytes, device);
     uint64_t header_size = 0;
     r_handle.read(reinterpret_cast<char*>(&header_size), sizeof(header_size));
     r_handle.seekg(
         static_cast<std::streamoff>(tensor_entry.offset_start + header_size),
         std::ios::cur);  // skips the header and the tensor offset
 
-    // r_handle.read(reinterpret_cast<char*>(&temp), sizeof(temp));
-    this->data = (void*)malloc(required_bytes);
-
-    r_handle.read(reinterpret_cast<char*>(this->data), required_bytes);
+    r_handle.read(this->data<char>(),
+                  static_cast<std::streamsize>(required_bytes));
 
     r_handle.close();
 }
 
-const std::unordered_map<std::string, SafeTensorEntry>
-SafeTensorFile::get_tensor_list() const {
-    return this->tensor_list;
-}
-
-Tensor::~Tensor() {
-    if (this->data) {
-        free(this->data);
+Tensor::Tensor(const std::vector<uint64_t>& shape, const Device& device,
+               const DType& dtype) {
+    this->shape_ = shape;
+    this->device_ = device;
+    this->dtype_ = dtype;
+    uint64_t num_el = 1;
+    for (size_t i = 0; i < shape.size(); i++) {
+        num_el *= shape[i];
     }
+    this->data_ = this->_get_memory(dtype_size(dtype) * num_el, device);
 }
 
 }  // namespace inferX

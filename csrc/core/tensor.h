@@ -21,19 +21,37 @@ struct SafeTensorEntry {
 };
 
 class Tensor {
-   public:
-    void* data;
-    DType dtype;
-    std::string name;
-    std::vector<uint64_t> shape;
-    Device device;
+    std::shared_ptr<void> data_;
+    DType dtype_;
+    std::string name_;
+    std::vector<uint64_t> shape_;
+    Device device_;
 
+    std::shared_ptr<void> _get_memory(const uint64_t&, const Device&);
+
+   public:
     Tensor(const SafeTensorEntry&, const Device&);
-    ~Tensor();
+    Tensor(const std::vector<uint64_t>&, const Device&, const DType&);
+
+    // Getters
+    const DType& dtype() const { return dtype_; }
+    const std::string& name() const { return name_; }
+    const std::vector<uint64_t>& shape() const { return shape_; }
+    Device device() const { return device_; }
+
+    template <typename T>
+    T* data() {
+        return static_cast<T*>(data_.get());
+    }
+
+    template <typename T>
+    const T* data() const {
+        return static_cast<const T*>(data_.get());
+    }
 };
 
 class SafeTensorFile {
-    std::unordered_map<std::string, SafeTensorEntry> tensor_list;
+    std::unordered_map<std::string, SafeTensorEntry> tensor_list_;
 
     DType _get_dtype(const std::string&);
 
@@ -41,9 +59,13 @@ class SafeTensorFile {
     explicit SafeTensorFile(const fs::path&);
 
     const std::unordered_map<std::string, SafeTensorEntry> get_tensor_list()
-        const;
+        const {
+        return this->tensor_list_;
+    }
 
-    const SafeTensorEntry& get_entry(const std::string&) const;
+    const SafeTensorEntry& get_entry(const std::string& name) const {
+        return this->tensor_list_.at(name);
+    };
 
     std::unordered_map<std::string, Tensor> load_tensors(const Device&);
 };

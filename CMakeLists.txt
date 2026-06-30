@@ -33,7 +33,10 @@ find_package(pybind11 CONFIG REQUIRED)
 # We don't need target_link_libraries() this handles that
 pybind11_add_module(${PROJECT_NAME} ${SOURCE_FILES})
 
-target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
+target_include_directories(${PROJECT_NAME} 
+    PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include"
+    PUBLIC "${CMAKE_CURRENT_LIST_DIR}/csrc"
+)
 
 target_link_libraries(${PROJECT_NAME} 
     PRIVATE CURL::libcurl

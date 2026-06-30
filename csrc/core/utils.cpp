@@ -65,7 +65,11 @@ size_t cpu_available_memory(const Device& device) {
     return memoryValue;
 }
 
-size_t cuda_available_memory(const Device& device) { return 0; }
+size_t cuda_available_memory(const Device& device) {
+    std::cout << "Checking device: cuda:" << device.index << " for space."
+              << std::endl;
+    return 0;
+}
 
 std::string human_readable_memory(const uint64_t& bytes) {
     constexpr std::string_view units[] = {"B", "KiB", "MiB", "GiB", "TiB"};

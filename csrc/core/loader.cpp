@@ -9,7 +9,8 @@ using json = nlohmann::json;
 
 namespace inferX {
 
-fs::path get_download_dir(const std::string& model_id) {
+fs::path get_download_dir(const std::string& model_id,
+                          const std::string& revision) {
     fs::path output_dir;
 
     const char* env_dir_path = std::getenv("INFERX_CACHE");
@@ -25,10 +26,15 @@ fs::path get_download_dir(const std::string& model_id) {
         }
     }
 
+    output_dir /= revision;
+
+    std::cout << "Model Dir: " << output_dir << std::endl;
+
     return output_dir;
 }
 
 std::vector<ModelFile> hf_model_ls(const std::string& model_id,
+                                   const std::string& revision,
                                    const std::string& auth_token) {
     std::string filename;
     std::vector<ModelFile> files;
@@ -62,25 +68,24 @@ std::vector<ModelFile> hf_model_ls(const std::string& model_id,
     return files;
 }
 
-void load_safetensors(const std::vector<ModelFile>& files,
-                      const fs::path& output_dir, const Device& device) {
+void load_safetensors(const fs::path& model_dir, const Device& device) {
     std::unordered_map<std::string, Tensor> tensors;
-    for (const ModelFile& file : files) {
-        if (file.filename.find(".safetensor") != std::string::npos) {
-            SafeTensorFile tensor_file((output_dir / file.filename));
+    for (auto file : fs::directory_iterator(model_dir)) {
+        std::string filepath = file.path().c_str();
+        if (filepath.find(".safetensor") != std::string::npos) {
+            SafeTensorFile tensor_file(file);
 
             tensors.merge(tensor_file.load_tensors(device));
         }
     }
 }
 
-void load_model(const std::string& model_id, const std::string& revision,
-                const std::string& auth_token, const std::string& device) {
+void download_model(const std::string& model_id, const fs::path& output_dir,
+                    const std::string& revision,
+                    const std::string& auth_token) {
     Requests download = Requests();
-    std::vector<ModelFile> files = hf_model_ls(model_id, auth_token);
+    std::vector<ModelFile> files = hf_model_ls(model_id, revision, auth_token);
 
-    fs::path output_dir = get_download_dir(model_id);
-    std::cout << "Model Download dir:" << output_dir << std::endl;
     if (!fs::exists(output_dir) || !fs::is_directory(output_dir)) {
         fs::create_directories(output_dir);
     }
@@ -95,12 +100,18 @@ void load_model(const std::string& model_id, const std::string& revision,
             }
         }
     }
-
     // Downloading Model Files
     download.request_multiple_files(files, output_dir, auth_token);
+}
+
+void load_model(const std::string& model_id, const std::string& revision,
+                const std::string& auth_token, const std::string& device) {
+    fs::path output_dir = get_download_dir(model_id);
+
+    // download_model(model_id, output_dir, revision, auth_token);
 
     Device d = get_device(device);
-    load_safetensors(files, output_dir, d);
+    load_safetensors(output_dir, d);
 }
 
 }  // namespace inferX
