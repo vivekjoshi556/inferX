@@ -32,4 +32,4 @@ build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 wheel.packages = ["inferX"]
-cmake.targets = ["_inferX"]
+build.targets = ["_inferX"]
