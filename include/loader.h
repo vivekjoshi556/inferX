@@ -16,7 +16,8 @@ std::vector<inferX::ModelFile> hf_model_ls(const std::string&,
                                            const std::string&);
 fs::path get_download_dir(const std::string&,
                           const std::string& revision = "main");
-void load_safetensors(const fs::path&, const Device&);
+std::unordered_map<std::string, Tensor> load_safetensors(const fs::path&,
+                                                         const Device&);
 void download_model(const std::string&, const fs::path& output_dir,
                     const std::string& revision = "main",
                     const std::string& auth_token = "");

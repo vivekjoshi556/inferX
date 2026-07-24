@@ -28,7 +28,11 @@ fs::path get_download_dir(const std::string& model_id,
 
     output_dir /= revision;
 
-    std::cout << "Model Dir: " << output_dir << std::endl;
+    std::cout << "Model Dir: " << output_dir;
+    if (fs::create_directories(output_dir))
+        std::cout << " created successfully" << std::endl;
+    else
+        std::cout << " already exists" << std::endl;
 
     return output_dir;
 }
@@ -68,7 +72,8 @@ std::vector<ModelFile> hf_model_ls(const std::string& model_id,
     return files;
 }
 
-void load_safetensors(const fs::path& model_dir, const Device& device) {
+std::unordered_map<std::string, Tensor> load_safetensors(
+    const fs::path& model_dir, const Device& device) {
     std::unordered_map<std::string, Tensor> tensors;
     for (auto file : fs::directory_iterator(model_dir)) {
         std::string filepath = file.path().c_str();
@@ -78,6 +83,8 @@ void load_safetensors(const fs::path& model_dir, const Device& device) {
             tensors.merge(tensor_file.load_tensors(device));
         }
     }
+
+    return tensors;
 }
 
 void download_model(const std::string& model_id, const fs::path& output_dir,
@@ -111,7 +118,8 @@ void load_model(const std::string& model_id, const std::string& revision,
     // download_model(model_id, output_dir, revision, auth_token);
 
     Device d = get_device(device);
-    load_safetensors(output_dir, d);
+    std::unordered_map<std::string, Tensor> tensors =
+        load_safetensors(output_dir, d);
 }
 
 }  // namespace inferX
