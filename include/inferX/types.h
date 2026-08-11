@@ -3,6 +3,7 @@
 
 #include <string>
 #include <iostream>
+#include <functional>
 
 namespace inferX {
 
@@ -26,6 +27,10 @@ constexpr size_t dtype_size(DType dtype) {
 struct Device {
     DeviceType type;
     int index = 0;
+
+    bool operator==(const Device& other) const {
+        return type == other.type && index == other.index;
+    }
 };
 
 struct ModelFile {
@@ -37,5 +42,14 @@ struct ModelFile {
 };
 
 }  // namespace inferX
+
+template <>
+struct std::hash<inferX::Device> {
+    std::size_t operator()(const inferX::Device& d) const noexcept {
+        std::size_t h1 = std::hash<inferX::DeviceType>{}(d.type);
+        std::size_t h2 = std::hash<int>{}(d.index);
+        return h1 ^ (h2 << 1);  // or use boost::hash_combine
+    }
+};
 
 #endif

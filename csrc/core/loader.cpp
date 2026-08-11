@@ -115,7 +115,7 @@ void load_model(const std::string& model_id, const std::string& revision,
                 const std::string& auth_token, const std::string& device) {
     fs::path output_dir = get_download_dir(model_id);
 
-    // download_model(model_id, output_dir, revision, auth_token);
+    download_model(model_id, output_dir, revision, auth_token);
 
     Device d = get_device(device);
     std::unordered_map<std::string, Tensor> tensors =

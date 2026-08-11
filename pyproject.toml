@@ -10,7 +10,8 @@ dependencies = []
 dev = [
     "pytest-cov==7.1.0",
     "pybind11",
-    "pre-commit"
+    "pre-commit",
+    "dotenv"
 ]
 
 

@@ -1,7 +1,5 @@
 #include <cmath>
 #include "utils.h"
-#include <vector>
-#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <iostream>
@@ -27,48 +25,6 @@ Device get_device(const std::string& device) {
 
     // Defaults to CPU
     return Device({.type = DeviceType::CPU, .index = index});
-}
-
-size_t get_memory_available(const Device& device) {
-    switch (device.type) {
-        case DeviceType::CPU:
-            return cpu_available_memory(device);
-        case DeviceType::CUDA:
-            return cuda_available_memory(device);
-        default:
-            throw std::runtime_error(
-                "[ERROR]: Queries mem for unsupported DeviceType");
-    }
-}
-
-size_t cpu_available_memory(const Device& device) {
-    // Assuming a linux based system
-    std::ifstream meminfoFile("/proc/meminfo");
-    std::string lineHeader;
-    size_t memoryValue = 0;
-
-    if (!meminfoFile.is_open()) {
-        std::cerr << "Failed to open /proc/meminfo\n";
-        return 1;
-    }
-
-    while (meminfoFile >> lineHeader) {
-        if (lineHeader == "MemAvailable:") {
-            if (meminfoFile >> memoryValue) {
-                return memoryValue * 1024;
-            }
-            break;
-        }
-        meminfoFile.ignore(256, '\n');
-    }
-
-    return memoryValue;
-}
-
-size_t cuda_available_memory(const Device& device) {
-    std::cout << "Checking device: cuda:" << device.index << " for space."
-              << std::endl;
-    return 0;
 }
 
 std::string human_readable_memory(const uint64_t& bytes) {

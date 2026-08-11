@@ -2,6 +2,7 @@
 #include "tensor.h"
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include "device_context/device_context_registry.h"
 
 using json = nlohmann::json;
 
@@ -70,7 +71,7 @@ SafeTensorFile::SafeTensorFile(const fs::path& filepath) {
                 {.name = el.key(),
                  .dtype = _get_dtype(el.value()["dtype"].get<std::string>()),
                  .filepath = filepath,
-                 .shape = el.value()["shape"].get<std::vector<uint64_t>>(),
+                 .shape = el.value()["shape"].get<TensorShape>(),
                  .offset_start = data_offset[0],
                  .offset_end = data_offset[1]});
         }
@@ -84,35 +85,23 @@ std::unordered_map<std::string, Tensor> SafeTensorFile::load_tensors(
     std::unordered_map<std::string, Tensor> tensors;
 
     for (auto& el : this->tensor_list_) {
-        tensors.try_emplace(el.first, el.second, device);
+        tensors.try_emplace(el.first, this->load_tensor(el.second, device));
     }
 
     return tensors;
 }
 
-std::shared_ptr<void> Tensor::_get_memory(const uint64_t& required_bytes,
-                                          const Device& device) {
-    uint64_t available_memory = get_memory_available(device);
-    if (available_memory < required_bytes) {
-        throw std::runtime_error(
-            "[ERROR]: Device out of memory. Tried to allocate " +
-            human_readable_memory(required_bytes) +
-            ", available: " + human_readable_memory(available_memory));
-    }
-
-    std::string shape = "";
-    for (uint64_t& s : this->shape_) {
-        shape += std::to_string(s) + " ";
-    }
-
-    std::cout << "Tensor " << this->name_ << " with shape: " << shape
-              << "memory requirement: " << human_readable_memory(required_bytes)
-              << std::endl;
-
-    return std::shared_ptr<void>(malloc(required_bytes), free);
+TensorStorage::TensorStorage(const Device& device, const size_t req_mem,
+                             const DType& dtype)
+    : device_(device),
+      nbytes_(req_mem),
+      dtype_(dtype),
+      d_ctx_(DeviceContextRegistry::instance().get(device)) {
+    this->data_ = this->d_ctx_.allocate(req_mem);
 }
 
-Tensor::Tensor(const SafeTensorEntry& tensor_entry, const Device& device) {
+Tensor SafeTensorFile::load_tensor(const SafeTensorEntry& tensor_entry,
+                                   const Device& device) {
     std::ifstream r_handle(tensor_entry.filepath, std::ios::binary);
 
     if (!r_handle) {
@@ -120,37 +109,51 @@ Tensor::Tensor(const SafeTensorEntry& tensor_entry, const Device& device) {
                                  tensor_entry.filepath.string());
     }
 
-    this->name_ = tensor_entry.name;
-    this->dtype_ = tensor_entry.dtype;
-    this->shape_ = tensor_entry.shape;
-    this->device_ = device;
-
+    Tensor t(tensor_entry.shape, device, tensor_entry.dtype);
     uint64_t required_bytes =
         tensor_entry.offset_end - tensor_entry.offset_start;
 
-    this->data_ = this->_get_memory(required_bytes, device);
     uint64_t header_size = 0;
     r_handle.read(reinterpret_cast<char*>(&header_size), sizeof(header_size));
+
+    if (device.type == DeviceType::CPU) {
+        r_handle.read(t.data<char>(),
+                      static_cast<std::streamsize>(required_bytes));
+        return t;
+    }
+
+    size_t offset = 0;
+    constexpr size_t CHUNK_SIZE = 64 * 1024 * 1024;  // 64 MB
+    std::vector<char> buffer(CHUNK_SIZE);
+
     r_handle.seekg(
         static_cast<std::streamoff>(tensor_entry.offset_start + header_size),
         std::ios::cur);  // skips the header and the tensor offset
 
-    r_handle.read(this->data<char>(),
-                  static_cast<std::streamsize>(required_bytes));
+    while (offset < required_bytes) {
+        size_t bytes_to_read = std::min(CHUNK_SIZE, required_bytes - offset);
+
+        r_handle.read(buffer.data(), bytes_to_read);
+
+        t.storage().copy_from_host(buffer.data(), bytes_to_read, offset);
+
+        offset += bytes_to_read;
+    }
 
     r_handle.close();
+    return t;
 }
 
-Tensor::Tensor(const std::vector<uint64_t>& shape, const Device& device,
+Tensor::Tensor(const TensorShape& shape, const Device& device,
                const DType& dtype) {
     this->shape_ = shape;
-    this->device_ = device;
-    this->dtype_ = dtype;
-    uint64_t num_el = 1;
-    for (size_t i = 0; i < shape.size(); i++) {
-        num_el *= shape[i];
-    }
-    this->data_ = this->_get_memory(dtype_size(dtype) * num_el, device);
+
+    this->storage_ = std::make_shared<TensorStorage>(
+        device,
+        dtype_size(dtype) * std::accumulate(shape.begin(), shape.end(),
+                                            uint64_t{1},
+                                            std::multiplies<uint64_t>()),
+        dtype);
 }
 
 }  // namespace inferX
