@@ -10,7 +10,7 @@
 #include "inferX/types.h"
 
 #ifdef INFERX_USE_CUDA
-    #include "cuda_context.cuh"
+    #include "cuda_context.h"
 #endif
 
 namespace inferX {
