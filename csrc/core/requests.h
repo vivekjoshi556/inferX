@@ -16,6 +16,7 @@ namespace inferX {
 struct DownloadContext {
     std::ofstream file;
     std::string url;
+    curl_slist* headers = nullptr;
 };
 
 class Requests {
@@ -25,7 +26,8 @@ class Requests {
     void _init_curl();
     void _init_multi_curl();
     bool _attach_multi_handle_req(const inferX::ModelFile& file,
-                                  const fs::path& output_dir);
+                                  const fs::path& output_dir,
+                                  const std::string&);
     static size_t _write_callback(char*, size_t, size_t, void*);
     static size_t _file_write_callback(char*, size_t, size_t, void*);
 
@@ -34,7 +36,8 @@ class Requests {
 
     json request_api(const std::string& url,
                      const std::string& auth_token = "");
-    void request_multiple_files(const std::vector<ModelFile>&, const fs::path&);
+    void request_multiple_files(const std::vector<ModelFile>&, const fs::path&,
+                                const std::string&);
 
     ~Requests();
 };

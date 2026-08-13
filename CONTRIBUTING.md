@@ -30,17 +30,13 @@ import inferX
 
 ### Useful Build Flags
 
-Enable debug builds and AddressSanitizer support:
+Here is a list of flags that can be used with installation command:
 
-```bash
-pip install .[dev] -Ccmake.build-type=Debug
-```
-
-Get verbose build output from `scikit-build-core`:
-
-```bash
-pip install .[dev] -v
-```
+| Flag                                | Purpose                                          |
+| ----------------------------------- | ------------------------------------------------ |
+| `-Ccmake.build-type=Debug`          | Enable debug builds and AddressSanitizer support |
+| `-v`                                | verbose build output from `scikit-build-core`    |
+| `-Ccmake.define.INFERX_USE_CUDA=ON` | build with cuda                                  |
 
 ---
 
